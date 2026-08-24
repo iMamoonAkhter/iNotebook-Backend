@@ -8,7 +8,11 @@ const jwt = require('jsonwebtoken');
 const fetchuser = require("../middlewares/fetchUser");
 const upload = require('../middlewares/multer');
 
-const {uploadOnCloudinary, deleteFromCloudinary} = require("../utils/cloudinary");
+const {
+  uploadOnCloudinary,
+  deleteFromCloudinary,
+  getPublicIdFromUrl,
+} = require("../utils/cloudinary");
 
 
 
@@ -193,6 +197,13 @@ router.post("/uploadprofileimage", fetchuser, upload.single("image"), async (req
     }
 
     const userId = req.user.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // 1. Upload the new image to Cloudinary
     const localFilePath = req.file.path;
     const cloudinaryResponse = await uploadOnCloudinary(localFilePath);
 
@@ -200,20 +211,27 @@ router.post("/uploadprofileimage", fetchuser, upload.single("image"), async (req
       return res.status(500).json({ message: "Failed to upload image to cloud storage" });
     }
 
-    // Update the user's profileImage field with the Cloudinary URL
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { profileImage: cloudinaryResponse.secure_url },
-      { new: true }
-    ).select("-password");
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
+    // 2. Delete the old image from Cloudinary (if existing and hosted on Cloudinary)
+    const oldImageUrl = user.profileImage;
+    if (oldImageUrl) {
+      const oldPublicId = getPublicIdFromUrl(oldImageUrl);
+      if (oldPublicId) {
+        // Safe delete: handled asynchronously without blocking or failing the main request
+        deleteFromCloudinary(oldPublicId).catch((err) => {
+          console.error("Non-critical error deleting old profile image:", err);
+        });
+      }
     }
+
+    // 3. Update User record in MongoDB with the new Cloudinary URL
+    user.profileImage = cloudinaryResponse.secure_url;
+    await user.save();
+
+    const sanitizedUser = await User.findById(userId).select("-password");
 
     res.status(200).json({
       message: "Profile image uploaded successfully",
-      user: updatedUser,
+      user: sanitizedUser,
     });
   } catch (error) {
     console.error("Error uploading profile image:", error);

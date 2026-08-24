@@ -185,32 +185,39 @@ router.put('/change-password', [
   }
 })
 
-// Profile
+// Profile Image Upload
 router.post("/uploadprofileimage", fetchuser, upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res.status(400).json({ message: "No file uploaded. Please select an image." });
     }
 
     const userId = req.user.id;
     const localFilePath = req.file.path;
     const cloudinaryResponse = await uploadOnCloudinary(localFilePath);
 
+    if (!cloudinaryResponse || !cloudinaryResponse.secure_url) {
+      return res.status(500).json({ message: "Failed to upload image to cloud storage" });
+    }
+
     // Update the user's profileImage field with the Cloudinary URL
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { profileImage: cloudinaryResponse.secure_url },
       { new: true }
-    );
+    ).select("-password");
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json({ message: "Profile image uploaded successfully", user: updatedUser });
+    res.status(200).json({
+      message: "Profile image uploaded successfully",
+      user: updatedUser,
+    });
   } catch (error) {
     console.error("Error uploading profile image:", error);
-    res.status(500).json({ message: "Internal Error" });
+    res.status(500).json({ message: error.message || "Internal Server Error" });
   }
 });
 

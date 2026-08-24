@@ -1,6 +1,5 @@
-// cloudinary.js
-const { v2: cloudinary } = require('cloudinary');
-const fs = require('fs');
+const { v2: cloudinary } = require("cloudinary");
+const fs = require("fs");
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,27 +10,35 @@ cloudinary.config({
 const uploadOnCloudinary = async (localFilePath) => {
   try {
     if (!localFilePath) {
-      throw new Error("File path is missing");
+      throw new Error("Local file path is missing");
     }
     const response = await cloudinary.uploader.upload(localFilePath, {
       resource_type: "auto",
+      folder: "inotebook_profiles",
     });
-    fs.unlinkSync(localFilePath); // Remove local file after upload
+    // Remove local file after successful upload
+    if (fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
     return response;
   } catch (error) {
     console.error("Error uploading file to Cloudinary:", error);
-    fs.unlinkSync(localFilePath); // Remove local file on error
+    // Ensure local file is cleaned up even if Cloudinary upload fails
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      fs.unlinkSync(localFilePath);
+    }
     throw error;
   }
 };
 
+const deleteFromCloudinary = async (publicId) => {
+  try {
+    if (!publicId) return null;
+    return await cloudinary.uploader.destroy(publicId);
+  } catch (error) {
+    console.error("Error deleting file from Cloudinary:", error);
+    throw error;
+  }
+};
 
-const deleteFromCloudinary = async(publicId)=>{
-    try {
-        await v2.uploader.destroy(publicId);
-    } catch (error) {
-        return res.status(500).send("Internal Error!");
-    }
-}
-
-module.exports  = {uploadOnCloudinary, deleteFromCloudinary};
+module.exports = { uploadOnCloudinary, deleteFromCloudinary };
